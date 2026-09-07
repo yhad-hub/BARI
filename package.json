@@ -1,0 +1,21 @@
+{
+  "name": "hra-fiche-collaborateur",
+  "version": "1.0.0",
+  "description": "Page web Fiche Collaborateur consultable depuis HR Access Suite 9 via une connexion OpenHR",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "MOCK_MODE=true node server.js"
+  },
+  "keywords": [
+    "hr-access",
+    "openhr",
+    "suite9",
+    "collaborateur"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "express": "^4.19.2",
+    "fast-xml-parser": "^4.4.1"
+  }
+}

@@ -1,0 +1,169 @@
+:root {
+  --bleu-fonce: #1f3a5f;
+  --bleu: #2e5e9e;
+  --bleu-clair: #eaf1fa;
+  --gris-texte: #333;
+  --gris-secondaire: #6b7280;
+  --fond: #f4f6f9;
+  --blanc: #fff;
+  --rouge: #b3261e;
+  --orange-fond: #fff4e5;
+  --orange-bord: #e6a23c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: var(--fond);
+  color: var(--gris-texte);
+}
+
+.entete {
+  background: linear-gradient(135deg, var(--bleu-fonce), var(--bleu));
+  color: var(--blanc);
+  padding: 20px 0;
+}
+
+.entete-contenu {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.entete h1 { margin: 0; font-size: 1.5rem; }
+.sous-titre { margin: 4px 0 0; opacity: 0.85; font-size: 0.9rem; }
+
+.conteneur {
+  max-width: 960px;
+  margin: 24px auto;
+  padding: 0 20px;
+}
+
+.recherche {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: var(--blanc);
+  border: 1px solid #dde3ec;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+
+.recherche label { font-weight: 600; font-size: 0.9rem; }
+
+.recherche input {
+  flex: 1 1 180px;
+  padding: 8px 10px;
+  border: 1px solid #c3cddb;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.recherche button {
+  background: var(--bleu);
+  color: var(--blanc);
+  border: none;
+  border-radius: 6px;
+  padding: 9px 18px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.recherche button:hover { background: var(--bleu-fonce); }
+
+.message {
+  background: #fdecea;
+  color: var(--rouge);
+  border: 1px solid #f5c6c2;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+
+.chargement {
+  color: var(--gris-secondaire);
+  padding: 12px 4px;
+}
+
+.carte {
+  background: var(--blanc);
+  border: 1px solid #dde3ec;
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+
+.carte h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  color: var(--bleu-fonce);
+  border-bottom: 2px solid var(--bleu-clair);
+  padding-bottom: 8px;
+}
+
+.carte-identite {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.carte-identite h2 { margin: 0; font-size: 1.3rem; }
+
+.avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--bleu-clair);
+  color: var(--bleu-fonce);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.texte-secondaire { margin: 4px 0 0; color: var(--gris-secondaire); font-size: 0.9rem; }
+
+.grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+dl { margin: 0; }
+
+dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f2f6;
+  font-size: 0.92rem;
+}
+
+dl div:last-child { border-bottom: none; }
+
+dt { color: var(--gris-secondaire); }
+dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+
+.avertissements {
+  margin-top: 20px;
+  background: var(--orange-fond);
+  border: 1px solid var(--orange-bord);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+}
+
+.pied {
+  max-width: 960px;
+  margin: 24px auto;
+  padding: 0 20px 20px;
+  color: var(--gris-secondaire);
+  font-size: 0.8rem;
+}

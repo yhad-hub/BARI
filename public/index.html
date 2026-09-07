@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fiche collaborateur</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="entete">
+    <div class="entete-contenu">
+      <h1>Fiche collaborateur</h1>
+      <p class="sous-titre">Données issues du dossier HR Access (connexion OpenHR)</p>
+    </div>
+  </header>
+
+  <main class="conteneur">
+    <!-- Recherche manuelle (utile hors appel depuis HRa avec ?nudoss=...) -->
+    <form id="formulaire-recherche" class="recherche" autocomplete="off">
+      <label for="champ-nudoss">Numéro de dossier / matricule</label>
+      <input id="champ-nudoss" name="nudoss" type="text" maxlength="20"
+             pattern="[A-Za-z0-9]{1,20}" placeholder="ex. 00012345" required>
+      <button type="submit">Consulter</button>
+    </form>
+
+    <div id="message" class="message" hidden></div>
+    <div id="chargement" class="chargement" hidden>Chargement du dossier…</div>
+
+    <section id="fiche" hidden>
+      <div class="carte carte-identite">
+        <div class="avatar" id="avatar-initiales">–</div>
+        <div>
+          <h2 id="identite-nom">–</h2>
+          <p id="identite-poste" class="texte-secondaire">–</p>
+          <p class="texte-secondaire">Matricule : <strong id="identite-matricule">–</strong></p>
+        </div>
+      </div>
+
+      <div class="grille">
+        <div class="carte">
+          <h3>État civil</h3>
+          <dl id="section-etatCivil"></dl>
+        </div>
+        <div class="carte">
+          <h3>Coordonnées</h3>
+          <dl id="section-coordonnees"></dl>
+        </div>
+        <div class="carte">
+          <h3>Affectation</h3>
+          <dl id="section-affectation"></dl>
+        </div>
+        <div class="carte">
+          <h3>Contrat</h3>
+          <dl id="section-contrat"></dl>
+        </div>
+      </div>
+
+      <div id="avertissements" class="avertissements" hidden></div>
+    </section>
+  </main>
+
+  <footer class="pied">
+    <span id="indicateur-mode"></span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
