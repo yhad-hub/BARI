@@ -1,107 +1,137 @@
-# Documentation OpenHR — guide pratique pour ce projet
+# OpenHR — synthèse du Guide du développeur et application au projet
 
-OpenHR est la couche d'API d'**HR Access Suite 9** (Sopra HR Software). C'est
-un composant serveur (service Java, répertoire `$SIGACS/openhr` sur le serveur
-HRa) qui expose le dossier salarié et les traitements HRa aux applications
-tierces, notamment sous forme de **web services SOAP**, avec la sécurité et
-les habilitations du SIRH appliquées côté serveur — c'est ce qui en fait le
-point d'entrée recommandé pour une page comme la nôtre, plutôt qu'un accès
-SQL direct à la base.
+Synthèse du **Guide du développeur OpenHR** (HRa Suite 9, réf.
+`F OPENH 0900 3 GD XXX`, Sopra HR Software) : les concepts nécessaires pour
+comprendre et faire évoluer le connecteur Java de ce projet
+(`connector-java/`). Le guide complet et la **javadoc** livrée avec l'API
+restent les références.
 
-> ⚠️ La documentation technique OpenHR est **propriétaire** : elle n'est pas
-> publiée sur le web. Elle est livrée avec le produit et disponible sur le
-> portail support Sopra HR. Ce guide indique où la trouver et comment se
-> débrouiller en attendant avec le WSDL de votre propre serveur.
+## 1. Ce qu'est OpenHR (et ce qu'il n'est pas)
 
-## 1. Où trouver la documentation officielle
+OpenHR est une **API Java** (`com.hraccess.openhr`) livrée avec HR Access,
+qui permet de créer des « applications clientes OpenHR » accédant en
+lecture/écriture et en temps réel aux données du serveur HR Access, **en
+réutilisant la logique fonctionnelle existante** (programmes COBOL) et la
+**confidentialité** (rôles définis via Design Center).
 
-| Source | Contenu | Accès |
+Points structurants :
+
+- Ce n'est **pas un web service SOAP/REST** : l'API communique avec le
+  **serveur OpenHR** (application Java autonome, aussi appelée
+  « dispatcher ») de manière synchrone **par sockets TCP**, avec un
+  protocole propriétaire de messages texte. Le serveur OpenHR déclenche les
+  programmes COBOL du serveur HR Access.
+- L'API est **générique et pilotée par le modèle de données** (comme JDBC) :
+  elle manipule n'importe quel dossier dès lors qu'elle dispose du modèle
+  (le « dictionnaire »), construit à partir des processus déclarés.
+- Conçue pour le **mode TP (temps réel)** : volumes raisonnables ; pour du
+  volume, passer par le batch.
+
+## 2. Concepts et objets principaux
+
+| Concept HRa | Interface/Classe API | Rôle |
 |---|---|---|
-| **Portail support Sopra HR** (`support.hraccess.com`, espace client Sopra HR) | Index documentaire Suite 9 (référence `H91Xxxxx`), dont le **Guide OpenHR** (fonctionnement et usage de l'API) et les guides d'interopérabilité/web services | Compte client Sopra HR requis — voir votre administrateur SIRH ou votre contact Sopra HR |
-| **Livraison produit sur le serveur HRa** | Le répertoire d'installation (`$SIGACS/openhr`, et la documentation livrée avec la Suite) contient la configuration (`conf/dispatcher.properties`…) et souvent les guides PDF | Équipe d'exploitation HRa |
-| **WSDL exposé par votre serveur** | La **référence exacte** des opérations, messages et types disponibles sur *votre* installation (versions et paramétrages varient d'un site à l'autre) | Voir §2 |
-| **Formations Sopra HR** | Le [catalogue de formation Sopra HR](https://www.soprasteria.com/docs/librariesprovider2/sopra-hr-documents/formation/2024---formations/catalogue-hra-formation-2024-_vf_120124.pdf) et la plateforme eLearning incluent des modules interopérabilité/développement | Via votre société |
-| **Blog communautaire « HR Access … and Me »** | Retours d'expérience d'exploitation d'OpenHR (console HRaSpace, logs, montées de version Java) — utile pour l'administration, pas une référence d'API | [hraccessandme.blogspot.com](http://hraccessandme.blogspot.com/2011/03/ajouter-openhr-la-console-hraspace.html) |
+| Session | `IHRSession` (via `HRSessionFactory.createSession(Configuration)`) | Conversation de travail avec le serveur HRa ; **une par application**, connectée au démarrage (construction du dictionnaire = coûteux). Ne peut être reconnectée. |
+| Dictionnaire | `IHRDictionary` | Référentiel local du modèle de données (structures, informations, rubriques, liens, types de dossier), construit depuis `session.process_list`, mis en cache (`*.dic`) et rafraîchi de façon différentielle. |
+| Utilisateur | `IHRUser` (via `session.connectUser(login, motDePasse)`) | Connexion = session virtuelle côté serveur (table MX10) + résolution des rôles (MX20). Récupérable par `session.retrieveUser(vsesid)` (SSO natif). |
+| Rôle | `IHRRole` (`user.getRole("MODELE(PARAM)")`) | Porte la **confidentialité** ; toute requête sur données applicatives est émise au titre d'un rôle. |
+| Conversation | `IHRConversation` (`user.getMainConversation()`) | Requise par l'API ; n'a d'utilité réelle qu'avec des « informations paramètres » (ex. embauche). La conversation principale « 0000 » suffit en lecture. |
+| Collection de dossiers | `HRDossierCollection` (+ `HRDossierCollectionParameters`, `HRDossierFactory`) | Le « DAO » : chargement (`loadDossier(nudoss)` / `loadDossier(HRKey)` / `loadDossiers(sql)`), création, clonage, commit. ⚠️ Charger un dossier **remplace** le précédent dans la collection. |
+| Dossier | `HRDossier` | Arbre : dossier → informations (`HRDataSect`) → occurrences (`HROccur`) → rubriques. Identifié par clé technique (NUDOSS) ou fonctionnelle (arguments de tri de l'information 00, ex. SOCCLE+MATCLE). |
+| Occurrence | `HROccur` | Lecture/écriture typée : `getString/getDate/getInteger...("RUBRIQUE")`, `getValues()` ; `setXxx` puis `dossier.commit()`. |
+| BLOBs | `IHRBlob` (via `HROccur`) | Documents liés à une rubrique de rôle BLOB (tables BX10/BX20 ou volume d'archivage). |
+| Extraction de données | `HRExtractionSource` / `HRTechnicalExtractionSource` / `HRExtractionTemplate` | Lecture SQL bas niveau (via COBOL BHS/BNP), en lecture seule ; mots-clés portables `<QB>`, `<QE>`, `<DAYDATE>`, `<USERLANG>`… |
 
-Ce qu'il faut demander à votre contact Sopra HR ou à l'équipe SIRH :
-- le **Guide OpenHR** de votre version de la Suite 9 ;
-- le **guide des web services / interopérabilité** ;
-- le **dictionnaire de données** du dossier salarié de votre site (structures
-  d'information et rubriques réellement déployées, y compris les spécifiques).
+## 3. Configuration de la session (`openhr.properties`)
 
-## 2. Récupérer le WSDL sur votre serveur (la référence pratique)
+Configuration minimale (Commons Configuration) :
 
-Le contrat exact du service est décrit par le WSDL exposé par votre serveur
-OpenHR. Depuis une machine du réseau où tourne HRa :
-
-```bash
-# L'URL exacte dépend de votre topologie (port, contexte) — demandez-la à
-# l'exploitation, ou repérez le contexte openhr dans la console HRaSpace.
-curl -s "http://<serveur-hra>:<port>/<contexte-openhr>/services?wsdl"
+```properties
+session.languages=F,U            # 7.30.50+ (avant : session.language=F)
+session.process_list=FS001       # processus "Gestion de dossiers", compilés
+session.work_directory=/opt/connecteur-openhr/work
+openhr_server.server=10.11.12.13
+normal_message_sender.security=disabled
+normal_message_sender.port=8800
+sensitive_message_sender.security=disabled
+sensitive_message_sender.port=8800
+privilegied_message_sender.security=disabled
+privilegied_message_sender.port=8800
 ```
 
-Le WSDL vous donne, pour votre installation :
-- l'**URL d'endpoint** à mettre dans `OPENHR_ENDPOINT` (fichier `.env`) ;
-- les **noms exacts des opérations** de lecture du dossier (lecture
-  d'occurrences d'une structure d'information) et leurs espaces de noms ;
-- la **forme des messages** (balises d'identification, de dossier, de
-  structure, de rubriques).
+Trois « message senders » selon la nature des messages, à sécuriser
+différemment (voir §5). `openhr_server.timeout` fixe le délai des requêtes.
+La liste complète des propriétés est au chapitre « La session » du guide.
 
-Pour explorer et tester les appels sans coder, importez ce WSDL dans
-[SoapUI](https://www.soapui.org/) : il génère automatiquement des requêtes
-d'exemple pour chaque opération.
+## 4. Lecture d'un dossier — le cœur de notre connecteur
 
-## 3. Adapter ce projet à votre WSDL
+Mode opératoire (implémenté dans
+`connector-java/src/connecteur/ServiceDossierOpenHR.java`) :
 
-Une fois le WSDL en main, trois choses à ajuster ici :
+1. `HRApplication.configureLogs(log4j.properties)` puis
+   `HRSessionFactory.getFactory().createSession(new PropertiesConfiguration("openhr.properties"))`.
+2. `session.connectUser(utilisateur, motDePasse)` → `IHRUser`, puis
+   `user.getRole("MODELE(PARAM)")`.
+3. `HRDossierCollectionParameters` : `TYPE_NORMAL`, `setProcessName("FS001")`,
+   `setDataStructureName("ZY")`, `addDataSection(new HRDataSourceParameters.DataSection("00"))`…
+   ⚠️ Les informations lues doivent être **rattachées explicitement au
+   processus**, lequel doit figurer dans `session.process_list`.
+4. `new HRDossierCollection(parametres, user.getMainConversation(), role, new HRDossierFactory(TYPE_DOSSIER))`.
+5. `collection.loadDossier(nudoss)` ou
+   `collection.loadDossier(new HRKey(reglementation, matricule))` → `null` si
+   la clé est invalide (ou dossier hors confidentialité du rôle).
+6. `dossier.getDataSectionByName("10").getOccurs()` → itération sur les
+   `HROccur`, `occur.getValues()` pour les valeurs de rubriques.
 
-1. **`.env`** — `OPENHR_ENDPOINT`, `OPENHR_USER`, `OPENHR_PASSWORD`,
-   `OPENHR_ROLE` (compte de service et rôle selon le paramétrage sécurité de
-   votre site), puis `MOCK_MODE=false`.
-2. **`src/openhrClient.js` → `construireEnveloppe()`** — le gabarit SOAP
-   livré est générique ; alignez les balises et espaces de noms sur ceux du
-   WSDL de votre site. Le parseur de réponse est tolérant (recherche en
-   profondeur des nœuds `occurrence` et des rubriques), mais si vos réponses
-   utilisent d'autres noms de balises, adaptez `extraireChamps()`.
-3. **`config/openhr.config.js` → `structures`** — remplacez les codes de
-   structures d'information et de rubriques par ceux de votre dossier
-   salarié (le dictionnaire de données de votre site fait foi ; les SI
-   peuvent être standard ou spécifiques selon le paramétrage).
+Paramétrage fin possible par information (`DataSection`) : restriction de
+rubriques (`addItemName`), **filtre SQL** (`setSqlFilter("MOTIFA=<QB>RTT<QE>")`),
+ordre inverse (`setReverseOrder`), **rubriques externes** (libellés de codes
+réglementaires via `addExternal`, ex. libellé long ZD01 LIBLON), traitements
+spécifiques.
 
-## 4. Tester la connexion pas à pas
+Occurrences historisées : `getCurrentOccurs()` (en vigueur aujourd'hui),
+`getCurrentOccurs(date)`, `getOccursInRange(debut, fin)` — utiles pour
+n'afficher que l'affectation ou le contrat en vigueur.
 
-```bash
-# 1. Le serveur OpenHR répond-il ? (depuis le réseau HRa)
-curl -s -o /dev/null -w "%{http_code}\n" "http://<serveur-hra>:<port>/<contexte-openhr>/services?wsdl"
+## 5. Sécurité — points imposés par le guide
 
-# 2. Un appel SOAP manuel (adapter l'enveloppe à votre WSDL)
-curl -s -X POST "http://<serveur-hra>:<port>/<contexte-openhr>/services/..." \
-  -H "Content-Type: text/xml; charset=utf-8" \
-  -H "SOAPAction: ..." \
-  --data-binary @requete.xml
+- **Utilisateur de session** (`session.getSessionUser()`) : accès **sans
+  confidentialité** à toute la base ; fonctionnalité critique, réservée à des
+  clients authentifiés en **SSL2** (mutuel). Notre connecteur ne l'utilise
+  pas : utilisateur réel + rôle de consultation.
+- **Natures de messages** et sécurisation en production :
+  - `normal` : messages non sensibles — peut rester en clair ;
+  - `sensitive` : la **connexion utilisateur véhicule un mot de passe** →
+    **SSL** obligatoire en production ;
+  - `privilegied` : utilisateur de session, topologie système (mots de passe
+    FTP/JDBC) → **SSL2** obligatoire en production.
+- La configuration du client doit correspondre à celle du **serveur OpenHR**
+  (voir le Guide de gestion de la sécurité pour les certificats).
+- Tables sensibles protégées côté serveur : UC10 (mots de passe → vue UC11),
+  MX10/MX20/MX40/LO10 (identifiants de session virtuelle), EN30 (topologie).
 
-# 3. Puis via ce projet
-MOCK_MODE=false npm start
-curl -s "http://localhost:3000/api/collaborateur/<NUDOSS>"
-```
+## 6. Écriture (si la page devait un jour modifier des données)
 
-En cas d'échec, regardez les **logs OpenHR côté serveur HRa** : la politique
-de log (INFO/DEBUG) peut être modifiée à chaud via la console d'administration
-(`hr-admin-console`) si OpenHR y a été déclaré (fonction OpenHR dans la
-topologie + `global.names` dans `$SIGACS/openhr/conf/dispatcher.properties`).
+- Modifications en mémoire (`occur.setXxx`, `createOccur`, `delete`) puis
+  `dossier.commit()` → `ICommitResult` : erreurs **fonctionnelles** (poids
+  1-5 : 1-2 avertissements, 3-4 avertissements avec confirmation —
+  ignorables via `setIgnoreSeriousWarnings(true)`, 5 bloquantes) vs erreurs
+  **techniques** (`HRDossierCollectionCommitException`).
+- Modes de mise à jour : `NORMAL`, `SIMULATION` (transaction annulée),
+  `NO_REPLY` (pas de resynchronisation → un seul commit possible).
+- La transaction est bornée à **une requête serveur** (max 99 dossiers, une
+  structure de données) : pas de transaction longue ni distribuée.
+- Création de dossier avec paramètres (ex. embauche, information ZY3X) :
+  mécanique de **double commit** via une conversation dédiée par thread.
 
-## 5. Notions HRa utiles pour lire la documentation
+## 7. Où trouver plus
 
-- **NUDOSS** : identifiant technique interne du dossier salarié (attribué par
-  séquence base de données depuis la V7). C'est le paramètre que notre page
-  reçoit dans l'URL (`?nudoss=...`).
-- **Matricule (MATCLE)** : identifiant « métier » du salarié, porté par le
-  dossier.
-- **Structures d'information (SI)** : blocs de données du dossier salarié
-  (état civil, adresse, affectation, contrat…), composés de **rubriques**
-  (champs) et porteurs d'**occurrences** (éventuellement historisées par
-  date d'effet). Les codes exacts dépendent du paramétrage du site — d'où la
-  table de correspondance dans `config/openhr.config.js`.
-- **Rôle / population** : le compte utilisé pour l'appel OpenHR détermine ce
-  que le service accepte de renvoyer (habilitations HRa appliquées côté
-  serveur).
+- Le **Guide du développeur OpenHR** de votre version (portail support
+  Sopra HR, index Suite 9) — source de cette synthèse.
+- La **javadoc** livrée avec l'API (recommandée par le guide lui-même).
+- Le **Guide de gestion de la sécurité** (Login Modules, certificats SSL) et
+  le **Guide technique tous systèmes HR Design** (configuration du serveur
+  OpenHR, ports, topologie).
+- Le dictionnaire de données de votre site (Design Center) pour les codes
+  exacts de sections et rubriques à reporter dans
+  `config/openhr.config.js` et `connector-java/conf/connecteur.properties`.

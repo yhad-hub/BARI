@@ -1,164 +1,97 @@
 /**
- * Client OpenHR : interroge le dossier individuel HR Access Suite 9
- * via les web services SOAP OpenHR (service de lecture d'occurrences).
+ * Client du connecteur Java OpenHR : récupère le dossier collaborateur en
+ * JSON (sections/occurrences/rubriques) et le transpose vers les champs de
+ * la page selon la correspondance définie dans config/openhr.config.js.
  *
- * En mode mock (MOCK_MODE=true), renvoie un dossier de démonstration
- * sans appel réseau — pratique pour développer la page hors infrastructure HRa.
+ * En mode mock (MOCK_MODE=true), renvoie un dossier de démonstration sans
+ * appel réseau — pratique pour développer la page hors infrastructure HRa.
  */
-const { XMLParser } = require('fast-xml-parser');
 const config = require('../config/openhr.config');
 const donneesDemo = require('./donneesDemo');
 
-const parser = new XMLParser({
-  ignoreAttributes: false,
-  removeNSPrefix: true, // les réponses OpenHR sont fortement préfixées (soapenv, ns1…)
-  parseTagValue: false
-});
-
-/**
- * Construit l'enveloppe SOAP d'une demande de lecture d'occurrences
- * pour une structure d'information du dossier salarié.
- *
- * Le format exact du message dépend de la version d'OpenHR déployée sur
- * votre site (WSDL exposé par le serveur HRa). Le gabarit ci-dessous
- * correspond au service de lecture standard « getOccurrences » ; ajustez
- * les espaces de noms/balises si votre WSDL diffère.
- */
-function construireEnveloppe(nudoss, codeStructure, rubriques) {
-  const listeRubriques = rubriques
-    .map((r) => `        <rubrique>${r}</rubrique>`)
-    .join('\n');
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-                  xmlns:open="http://www.hraccess.com/openhr">
-  <soapenv:Header>
-    <open:identification>
-      <open:utilisateur>${config.openhr.user}</open:utilisateur>
-      <open:motDePasse>${config.openhr.password}</open:motDePasse>
-      <open:role>${config.openhr.role}</open:role>
-    </open:identification>
-  </soapenv:Header>
-  <soapenv:Body>
-    <open:getOccurrences>
-      <open:dossier>${nudoss}</open:dossier>
-      <open:structure>${codeStructure}</open:structure>
-      <open:rubriques>
-${listeRubriques}
-      </open:rubriques>
-    </open:getOccurrences>
-  </soapenv:Body>
-</soapenv:Envelope>`;
-}
-
-/** Appelle OpenHR pour une structure d'information et renvoie la 1re occurrence. */
-async function lireStructure(nudoss, codeStructure, defStructure) {
-  const rubriques = Object.keys(defStructure.champs);
-  const enveloppe = construireEnveloppe(nudoss, codeStructure, rubriques);
+/** Appelle le connecteur et renvoie le dossier brut (sections/occurrences). */
+async function appelerConnecteur(cle, valeur) {
+  const url = `${config.connecteur.url}/collaborateur/${encodeURIComponent(valeur)}`
+    + (cle === 'matricule' ? '?cle=matricule' : '');
 
   const controleur = new AbortController();
-  const minuteur = setTimeout(() => controleur.abort(), config.openhr.timeoutMs);
+  const minuteur = setTimeout(() => controleur.abort(), config.connecteur.timeoutMs);
 
   let reponse;
   try {
-    reponse = await fetch(config.openhr.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        SOAPAction: 'getOccurrences'
-      },
-      body: enveloppe,
-      signal: controleur.signal
-    });
+    reponse = await fetch(url, { signal: controleur.signal });
   } finally {
     clearTimeout(minuteur);
   }
 
+  const corps = await reponse.json().catch(() => ({}));
+  if (reponse.status === 404) {
+    return null;
+  }
   if (!reponse.ok) {
-    throw new Error(`OpenHR a répondu HTTP ${reponse.status} pour la structure ${codeStructure}`);
+    throw new Error(corps.erreur || `Le connecteur OpenHR a répondu HTTP ${reponse.status}`);
   }
-
-  const xml = await reponse.text();
-  return extraireChamps(xml, codeStructure, defStructure);
+  return corps;
 }
 
 /**
- * Extrait les rubriques de la réponse SOAP et les renomme selon la
- * correspondance rubrique HRa -> nom de champ de la config.
+ * Transpose les sections brutes vers un groupe de la page : pour chaque
+ * section du groupe, prend la première occurrence et renomme les rubriques.
  */
-function extraireChamps(xml, codeStructure, defStructure) {
-  const doc = parser.parse(xml);
-
-  const fault = doc?.Envelope?.Body?.Fault;
-  if (fault) {
-    const detail = fault.faultstring || fault.Reason?.Text || 'erreur SOAP inconnue';
-    throw new Error(`Erreur OpenHR (${codeStructure}) : ${detail}`);
-  }
-
-  // Cherche récursivement le premier nœud « occurrence » de la réponse,
-  // quel que soit l'habillage exact du WSDL du site.
-  const occurrence = trouverNoeud(doc, 'occurrence');
-  if (!occurrence) return {};
-
+function transposerGroupe(sections, definitionGroupe) {
   const resultat = {};
-  for (const [rubrique, nomChamp] of Object.entries(defStructure.champs)) {
-    const valeur = trouverNoeud(occurrence, rubrique);
-    if (valeur !== undefined && valeur !== null && typeof valeur !== 'object') {
-      resultat[nomChamp] = String(valeur).trim();
-    }
-  }
-  return resultat;
-}
+  const sectionsManquantes = [];
 
-/** Recherche en profondeur la première valeur portée par une balise donnée. */
-function trouverNoeud(noeud, nom) {
-  if (noeud === null || typeof noeud !== 'object') return undefined;
-  if (Array.isArray(noeud)) {
-    for (const element of noeud) {
-      const trouve = trouverNoeud(element, nom);
-      if (trouve !== undefined) return trouve;
+  for (const { section, champs } of definitionGroupe) {
+    const occurrences = sections[section];
+    if (!Array.isArray(occurrences) || occurrences.length === 0) {
+      sectionsManquantes.push(section);
+      continue;
     }
-    return undefined;
+    const occurrence = occurrences[0];
+    for (const [rubrique, nomChamp] of Object.entries(champs)) {
+      const valeur = occurrence[rubrique];
+      if (valeur !== undefined && valeur !== null && String(valeur).trim() !== '') {
+        resultat[nomChamp] = String(valeur).trim();
+      }
+    }
   }
-  if (nom in noeud) return noeud[nom];
-  for (const valeur of Object.values(noeud)) {
-    const trouve = trouverNoeud(valeur, nom);
-    if (trouve !== undefined) return trouve;
-  }
-  return undefined;
+  return { resultat, sectionsManquantes };
 }
 
 /**
- * Lit l'ensemble du dossier collaborateur : interroge chaque structure
- * d'information configurée et fusionne les champs obtenus par section.
+ * Lit le dossier collaborateur et le renvoie sous la forme attendue par la
+ * page (etatCivil / coordonnees / affectation / contrat).
+ *
+ * @param cle    'nudoss' ou 'matricule'
+ * @param valeur valeur de la clé
+ * @returns le dossier transposé, ou null si le dossier n'existe pas
  */
-async function lireDossierCollaborateur(nudoss) {
+async function lireDossierCollaborateur(cle, valeur) {
   if (config.mockMode) {
-    return donneesDemo(nudoss);
+    return donneesDemo(valeur);
   }
 
-  const sections = {};
-  const erreurs = [];
+  const brut = await appelerConnecteur(cle, valeur);
+  if (brut === null) return null;
 
-  await Promise.all(
-    Object.entries(config.structures).map(async ([code, def]) => {
-      try {
-        sections[code] = await lireStructure(nudoss, code, def);
-      } catch (err) {
-        erreurs.push({ structure: code, message: err.message });
-        sections[code] = {};
-      }
-    })
-  );
+  const sections = brut.sections || {};
+  const dossier = { nudoss: brut.nudoss, erreurs: [] };
+  const manquantes = new Set();
 
-  return {
-    nudoss,
-    etatCivil: sections.ZY00 || {},
-    coordonnees: sections.ZY3A || {},
-    affectation: sections.ZYAF || {},
-    contrat: sections.ZYCO || {},
-    erreurs
-  };
+  for (const [groupe, definition] of Object.entries(config.groupes)) {
+    const { resultat, sectionsManquantes } = transposerGroupe(sections, definition);
+    dossier[groupe] = resultat;
+    sectionsManquantes.forEach((s) => manquantes.add(s));
+  }
+
+  if (manquantes.size > 0) {
+    dossier.erreurs = [...manquantes].map((s) => ({
+      structure: s,
+      message: `Section ${s} absente ou vide (vérifiez openhr.sections côté connecteur et le rattachement au processus)`
+    }));
+  }
+  return dossier;
 }
 
 module.exports = { lireDossierCollaborateur };

@@ -1,30 +1,38 @@
 # Fiche collaborateur — HR Access Suite 9 / OpenHR
 
-Page web affichant les informations d'un collaborateur (état civil, coordonnées,
-affectation, contrat) à partir des données du dossier salarié HR Access Suite 9,
-lues via une connexion **OpenHR** (web services SOAP).
+Page web affichant les informations d'un collaborateur (état civil,
+coordonnées, affectation, contrat) à partir du dossier salarié HR Access
+Suite 9, lues via **OpenHR** — l'API Java livrée avec HR Access (voir
+`docs/OPENHR.md`).
 
 La page est conçue pour être **appelée depuis HRa Suite 9** (lien de menu ou
-page guidée) avec le numéro de dossier passé en paramètre d'URL.
+page guidée) avec le dossier passé en paramètre d'URL.
 
 ## Architecture
 
+OpenHR étant une API Java (protocole propriétaire sur sockets TCP, pas un
+web service), l'accès aux données passe par un connecteur Java :
+
 ```
 HRa Suite 9 (navigateur)
-   │  ouvre  /?nudoss=00012345
+   │  ouvre  /?nudoss=1000  (ou ?matricule=123456)
    ▼
-Serveur Node.js (ce projet)
-   │  GET /api/collaborateur/00012345
+Serveur web Node.js (ce dépôt, racine)        — page + API JSON + mapping rubriques→champs
+   │  GET http://connecteur:8091/collaborateur/1000
    ▼
-OpenHR (SOAP, serveur HR Access)  ──►  dossier salarié (ZY00, ZY3A, ZYAF, ZYCO…)
+Connecteur Java (connector-java/)             — API OpenHR : session, utilisateur, rôle,
+   │                                            collection de dossiers, lecture d'occurrences
+   ▼  sockets TCP (messages OpenHR)
+Serveur OpenHR ──► programmes COBOL ──► base HR Access (dossier ZY)
 ```
 
-- `public/` — la page web (HTML/CSS/JS, en français, sans framework)
-- `server.js` — serveur Express : sert la page et expose l'API JSON
-- `src/openhrClient.js` — client SOAP OpenHR (construction de l'enveloppe,
-  appel, extraction des rubriques) + mode mock
-- `config/openhr.config.js` — endpoint OpenHR, identifiants, et surtout la
-  **correspondance structures/rubriques HRa → champs de la page**
+- `public/` — la page web (HTML/CSS/JS, français, sans framework)
+- `server.js` — serveur Express : sert la page, expose `/api/collaborateur/:id`
+- `src/openhrClient.js` — appel du connecteur + transposition
+  sections/rubriques → champs de la page (+ mode mock)
+- `config/openhr.config.js` — URL du connecteur et **correspondance
+  sections/rubriques HRa → champs affichés**
+- `connector-java/` — le connecteur OpenHR (voir son README)
 
 ## Démarrage rapide (sans serveur HR Access)
 
@@ -32,64 +40,67 @@ Prérequis : Node.js ≥ 18.
 
 ```bash
 npm install
-npm run dev        # démarre avec MOCK_MODE=true (données de démonstration)
+npm run dev        # MOCK_MODE=true : dossier fictif, pas de connecteur requis
 ```
 
-Puis ouvrir <http://localhost:3000/?nudoss=00012345> — la fiche s'affiche avec
-un dossier fictif. C'est le mode à utiliser pour développer la mise en page.
+Puis ouvrir <http://localhost:3000/?nudoss=00012345>.
 
-## Connexion à OpenHR (mode réel)
+Pour tester la chaîne complète avec le connecteur en mode mock (JDK requis) :
 
-1. Copier `.env.example` en `.env` et renseigner :
-   - `OPENHR_ENDPOINT` : l'URL du web service OpenHR de votre serveur HRa
-     (voir le WSDL exposé par votre installation) ;
-   - `OPENHR_USER` / `OPENHR_PASSWORD` : un compte de service autorisé à la
-     lecture du dossier salarié ;
-   - `OPENHR_ROLE` : le rôle/population selon le paramétrage sécurité du site ;
-   - `MOCK_MODE=false`.
-2. Adapter si besoin le gabarit SOAP dans `src/openhrClient.js`
-   (`construireEnveloppe`) aux balises exactes du WSDL de votre version
-   d'OpenHR — le parseur de réponse est volontairement tolérant sur
-   l'habillage (recherche des nœuds `occurrence` et des rubriques en
-   profondeur).
-3. Adapter la table `structures` de `config/openhr.config.js` au dossier de
-   votre site : codes de structures d'information (SI) et rubriques. Les
-   valeurs livrées par défaut (ZY00 état civil, ZY3A adresse, ZYAF
-   affectation, ZYCO contrat) correspondent au dossier standard et sont à
-   ajuster selon votre paramétrage.
-4. Démarrer : `npm start`.
+```bash
+cd connector-java && ./build.sh
+java -cp "build:lib/*" connecteur.ConnecteurOpenHR conf/connecteur.properties &
+cd .. && MOCK_MODE=false npm start
+```
+
+## Connexion réelle à HR Access
+
+1. **Connecteur** : suivre `connector-java/README.md` (JARs OpenHR dans
+   `lib/`, `openhr.properties` selon votre topologie, utilisateur de service
+   + rôle, `mock=false`).
+2. **Serveur web** : copier `.env.example` en `.env`, pointer `CONNECTOR_URL`
+   vers le connecteur, `MOCK_MODE=false`.
+3. **Correspondance des données** : ajuster les codes de sections et
+   rubriques dans `config/openhr.config.js` **et** la liste `openhr.sections`
+   du connecteur, d'après le dictionnaire de données de votre site (les
+   codes livrés sont indicatifs ; affectation `AF` et contrat `CO` sont des
+   exemples à remplacer).
 
 ## Déclaration de la page dans HRa Suite 9
 
-Dans le paramétrage Suite 9, créez un item de menu (ou un lien dans une page
-guidée) de type **URL externe** pointant vers :
+Créez un item de menu (ou un lien de page guidée) de type **URL externe** :
 
 ```
 http://<serveur-de-cette-page>:3000/?nudoss=[NUDOSS]
 ```
 
-en substituant le numéro de dossier du salarié courant (variable de contexte
-selon votre paramétrage : NUDOSS ou matricule). La page accepte aussi
-`?matricule=...`. Sans paramètre, un champ de recherche permet de saisir le
-matricule manuellement.
+en substituant le numéro de dossier du salarié courant (ou
+`?matricule=[MATCLE]` pour la clé fonctionnelle — la réglementation SOCCLE
+est alors celle configurée côté connecteur). Sans paramètre, la page offre
+un champ de recherche. En iframe dans Suite 9 : servir en HTTPS, domaine
+autorisé par la politique de sécurité du portail.
 
-Si la page est intégrée en iframe dans Suite 9, servez-la en **HTTPS** et sur
-un domaine autorisé par la politique de sécurité de votre portail.
+## Sécurité — avant mise en production
 
-## Sécurité — points d'attention avant mise en production
+- **Côté OpenHR** (impératif, cf. guide) : sécuriser les message senders
+  `sensitive` (SSL) et `privilegied` (SSL2) — le mot de passe de connexion
+  transite par le canal sensitive. Configuration dans
+  `connector-java/conf/openhr.properties`, en accord avec le serveur OpenHR.
+- Le connecteur utilise un **utilisateur réel + rôle** (confidentialité HRa
+  appliquée côté serveur), jamais l'« utilisateur de session ».
+- Identifiants uniquement via configuration locale / variables
+  d'environnement — jamais commités.
+- La page expose des données personnelles : placer serveur web et connecteur
+  derrière l'authentification du SI (SSO du portail HRa), servir en HTTPS,
+  et restreindre l'accès réseau au connecteur (il ne doit être joignable que
+  du serveur web).
+- L'API ne contrôle pas, à ce stade, que l'utilisateur connecté a le droit
+  de voir le dossier demandé — à brancher sur votre SSO avant ouverture
+  au-delà de la population RH.
 
-- Les identifiants OpenHR ne doivent jamais être commités : ils viennent de
-  variables d'environnement (`.env` est ignoré par git).
-- La page expose des données personnelles : placez le serveur derrière
-  l'authentification de votre SI (reverse proxy SSO, même IdP que le portail
-  HRa) et servez-la en HTTPS.
-- L'API ne contrôle pas, à ce stade, que l'utilisateur connecté a le droit de
-  voir le dossier demandé — à brancher sur votre SSO/habilitations HRa avant
-  ouverture au-delà de la population RH.
-
-## API
+## API du serveur web
 
 | Méthode | Route | Description |
 |---|---|---|
-| GET | `/api/collaborateur/:nudoss` | Dossier du collaborateur (JSON par sections) |
+| GET | `/api/collaborateur/:id` | Dossier par NUDOSS (`?cle=matricule` pour la clé fonctionnelle) |
 | GET | `/api/sante` | État du serveur et mode (mock/réel) |

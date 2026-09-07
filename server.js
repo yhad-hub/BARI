@@ -18,22 +18,26 @@ const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Un NUDOSS / matricule HRa est un identifiant court alphanumérique.
-const NUDOSS_VALIDE = /^[A-Za-z0-9]{1,20}$/;
+const IDENTIFIANT_VALIDE = /^[A-Za-z0-9]{1,20}$/;
 
-app.get('/api/collaborateur/:nudoss', async (req, res) => {
-  const { nudoss } = req.params;
+app.get('/api/collaborateur/:id', async (req, res) => {
+  const { id } = req.params;
+  const cle = req.query.cle === 'matricule' ? 'matricule' : 'nudoss';
 
-  if (!NUDOSS_VALIDE.test(nudoss)) {
-    return res.status(400).json({ erreur: 'Numéro de dossier invalide.' });
+  if (!IDENTIFIANT_VALIDE.test(id)) {
+    return res.status(400).json({ erreur: 'Identifiant de dossier invalide.' });
   }
 
   try {
-    const dossier = await lireDossierCollaborateur(nudoss);
+    const dossier = await lireDossierCollaborateur(cle, id);
+    if (dossier === null) {
+      return res.status(404).json({ erreur: 'Dossier introuvable (ou non visible du rôle utilisé).' });
+    }
     res.json(dossier);
   } catch (err) {
-    console.error(`Échec de lecture du dossier ${nudoss} :`, err.message);
+    console.error(`Échec de lecture du dossier ${id} :`, err.message);
     res.status(502).json({
-      erreur: 'Impossible de joindre OpenHR. Vérifiez la connexion au serveur HR Access.',
+      erreur: 'Impossible de joindre le connecteur OpenHR. Vérifiez qu\'il est démarré et connecté au serveur HR Access.',
       detail: err.message
     });
   }

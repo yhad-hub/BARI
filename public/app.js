@@ -129,12 +129,13 @@
     elements.fiche.hidden = false;
   }
 
-  function chargerDossier(nudoss) {
+  function chargerDossier(identifiant, cle) {
     elements.message.hidden = true;
     elements.fiche.hidden = true;
     elements.chargement.hidden = false;
 
-    fetch('/api/collaborateur/' + encodeURIComponent(nudoss))
+    fetch('/api/collaborateur/' + encodeURIComponent(identifiant)
+        + (cle === 'matricule' ? '?cle=matricule' : ''))
       .then(function (reponse) {
         return reponse.json().then(function (corps) {
           if (!reponse.ok) {
@@ -168,11 +169,14 @@
     })
     .catch(function () { /* pied de page facultatif */ });
 
-  // Lecture automatique du dossier passé en paramètre par HRa Suite 9
+  // Lecture automatique du dossier passé en paramètre par HRa Suite 9 :
+  // ?nudoss=... (clé technique) ou ?matricule=... (clé fonctionnelle)
   var params = new URLSearchParams(window.location.search);
-  var nudossUrl = params.get('nudoss') || params.get('matricule');
-  if (nudossUrl) {
-    elements.champNudoss.value = nudossUrl;
-    chargerDossier(nudossUrl);
+  if (params.get('nudoss')) {
+    elements.champNudoss.value = params.get('nudoss');
+    chargerDossier(params.get('nudoss'), 'nudoss');
+  } else if (params.get('matricule')) {
+    elements.champNudoss.value = params.get('matricule');
+    chargerDossier(params.get('matricule'), 'matricule');
   }
 })();

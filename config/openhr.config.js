@@ -1,31 +1,26 @@
 /**
- * Configuration de la connexion OpenHR (HR Access Suite 9).
+ * Configuration du serveur web Fiche collaborateur.
  *
- * Toutes les valeurs peuvent être surchargées par variables d'environnement
- * (voir .env.example). Les noms de structures d'information (SI) et de
- * rubriques correspondent au dossier individuel standard HRa Suite 9 ;
- * adaptez-les au paramétrage de votre site (SI spécifiques, rubriques
- * personnalisées, etc.).
+ * L'accès aux données HR Access passe par le connecteur Java OpenHR
+ * (connector-java/) qui expose le dossier en JSON. Ce fichier définit :
+ *  - l'URL du connecteur ;
+ *  - la correspondance entre les informations/rubriques du dossier salarié
+ *    (structure ZY) et les champs affichés par la page.
+ *
+ * Les codes de sections et rubriques ci-dessous correspondent au dossier
+ * standard HRa Suite 9 à titre indicatif — ADAPTEZ-LES au dictionnaire de
+ * votre site (la liste des sections lues se règle aussi côté connecteur,
+ * propriété openhr.sections). Une section absente ou vide laisse simplement
+ * le champ vide.
  */
 module.exports = {
-  // Mode simulation : true = pas d'appel réel à OpenHR, données de démonstration.
-  // Indispensable pour développer hors du réseau où se trouve le serveur HR Access.
+  // Mode simulation : true = dossier fictif sans appel au connecteur.
   mockMode: process.env.MOCK_MODE === 'true',
 
-  openhr: {
-    // URL du service OpenHR exposé par le serveur HR Access
-    // (ex. http://serveur-hra:8080/openhr/services/OpenHRService)
-    endpoint: process.env.OPENHR_ENDPOINT || 'http://localhost:8080/openhr/services/OpenHRService',
-
-    // Identifiants techniques du compte de service autorisé à interroger OpenHR
-    user: process.env.OPENHR_USER || '',
-    password: process.env.OPENHR_PASSWORD || '',
-
-    // Code population / rôle utilisé pour l'appel (selon paramétrage sécurité HRa)
-    role: process.env.OPENHR_ROLE || '',
-
-    // Timeout des appels SOAP en millisecondes
-    timeoutMs: parseInt(process.env.OPENHR_TIMEOUT_MS || '15000', 10)
+  // URL du connecteur Java OpenHR
+  connecteur: {
+    url: process.env.CONNECTOR_URL || 'http://localhost:8091',
+    timeoutMs: parseInt(process.env.CONNECTOR_TIMEOUT_MS || '15000', 10)
   },
 
   serveur: {
@@ -33,62 +28,29 @@ module.exports = {
   },
 
   /**
-   * Structures d'information du dossier individuel à interroger,
-   * et correspondance rubrique HRa -> champ exposé à la page web.
-   *
-   * Clé   : code de la SI dans le dossier salarié HRa Suite 9
-   * Valeur: { occurrence: 'premiere'|'toutes', champs: { RUBRIQUE: 'nomChamp' } }
+   * Correspondance sections/rubriques HRa -> champs de la page, par groupe
+   * d'affichage. Chaque groupe agrège une ou plusieurs sections ; la première
+   * occurrence de chaque section est utilisée.
    */
-  structures: {
-    // État civil
-    ZY00: {
-      occurrence: 'premiere',
-      champs: {
-        MATCLE: 'matricule',
-        NOMUSE: 'nomUsuel',
-        NOMPAT: 'nomPatronymique',
-        PRENOM: 'prenom',
-        DATNAI: 'dateNaissance',
-        VILNAI: 'villeNaissance',
-        NATION: 'nationalite',
-        SEXOFF: 'sexe',
-        SITFAM: 'situationFamiliale'
-      }
-    },
-    // Adresse / coordonnées
-    ZY3A: {
-      occurrence: 'premiere',
-      champs: {
-        ADRES1: 'adresseLigne1',
-        ADRES2: 'adresseLigne2',
-        CODPOS: 'codePostal',
-        VILLE: 'ville',
-        PAYS: 'pays',
-        TELDOM: 'telephone',
-        ADRMEL: 'email'
-      }
-    },
-    // Affectation
-    ZYAF: {
-      occurrence: 'premiere',
-      champs: {
-        SOCDOS: 'societe',
-        ETABLI: 'etablissement',
-        UNITEO: 'uniteOrganisationnelle',
-        POSTES: 'poste',
-        DATEFF: 'dateEffetAffectation'
-      }
-    },
-    // Contrat
-    ZYCO: {
-      occurrence: 'premiere',
-      champs: {
-        TYPCON: 'typeContrat',
-        DATDEB: 'dateDebutContrat',
-        DATFIN: 'dateFinContrat',
-        TEMPSX: 'tempsTravail',
-        CLASSI: 'classification'
-      }
-    }
+  groupes: {
+    etatCivil: [
+      { section: '00', champs: { MATCLE: 'matricule' } },
+      { section: '07', champs: { NOMUSE: 'nomUsuel', NOMPAT: 'nomPatronymique', PRENOM: 'prenom' } },
+      { section: '10', champs: { DATNAI: 'dateNaissance', VILNAI: 'villeNaissance' } },
+      { section: '12', champs: { NATION: 'nationalite' } }
+    ],
+    coordonnees: [
+      // ZY0F (Adresses) : ZONADA est redéfinie par pays (ZONAFR...) selon le site
+      { section: '0F', champs: { ZONADA: 'adresseLigne1', CDPOST: 'codePostal', VILLE: 'ville', PAYS: 'pays' } }
+    ],
+    affectation: [
+      // Codes à adapter : section d'affectation de votre dossier (société,
+      // établissement, unité organisationnelle, poste...)
+      { section: 'AF', champs: { SOCDOS: 'societe', ETABLI: 'etablissement', UNITEO: 'uniteOrganisationnelle', POSTES: 'poste', DATEFF: 'dateEffetAffectation' } }
+    ],
+    contrat: [
+      // Codes à adapter : section contrat de votre dossier
+      { section: 'CO', champs: { TYPCON: 'typeContrat', DATDEB: 'dateDebutContrat', DATFIN: 'dateFinContrat', TEMPSX: 'tempsTravail', CLASSI: 'classification' } }
+    ]
   }
 };

@@ -1,3 +1,6 @@
 node_modules/
 .env
 npm-debug.log*
+connector-java/build/
+connector-java/lib/*.jar
+connector-java/work/
