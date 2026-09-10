@@ -36,7 +36,7 @@ Serveur OpenHR ──► programmes COBOL ──► base HR Access (dossier ZY)
 
 ## Démarrage rapide (sans serveur HR Access)
 
-Prérequis : Node.js ≥ 18.
+Prérequis : Node.js ≥ 18. (Mise en service complète pas à pas : `docs/MISE-EN-SERVICE.md`.)
 
 ```bash
 npm install

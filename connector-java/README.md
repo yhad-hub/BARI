@@ -34,8 +34,15 @@ correspondance rubriques → champs de la page est faite côté serveur Node
 Prérequis : JDK 8 ou supérieur.
 
 ```bash
+# Linux / Unix
 ./build.sh                   # sans lib/ : mode mock seulement
-java -cp "build:lib/*" connecteur.ConnecteurOpenHR conf/connecteur.properties
+./run.sh
+
+# Windows
+build.bat
+run.bat
+
+# Test
 curl http://localhost:8091/collaborateur/00012345
 ```
 
@@ -63,3 +70,6 @@ curl http://localhost:8091/collaborateur/00012345
   remplace le précédent dans une collection, elle ne se partage donc pas
   entre requêtes concurrentes.
 - Lecture seule : aucun `commit()` n'est jamais émis.
+- **Reconnexion automatique** : une session/connexion utilisateur fermée ne
+  pouvant être rouverte, le connecteur en recrée une à la requête suivante
+  si la précédente est tombée (redémarrage du serveur OpenHR, coupure...).
