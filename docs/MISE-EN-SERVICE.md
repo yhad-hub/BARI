@@ -76,6 +76,14 @@ dictionnaire de votre site — en particulier **affectation** et **contrat**
 Item de menu ou lien de page guidée de type URL externe :
 `http://<serveur-page>:3000/?nudoss=[NUDOSS]` (ou `?matricule=[MATCLE]`).
 
+## En cas de problème : le diagnostic automatique
+
+Sur la machine cible, lancez `connector-java/diagnostic.sh` (Linux) ou
+`connector-java\diagnostic.bat` (Windows) et collez la sortie complète dans
+la conversation avec Claude : le script vérifie Java, l'accès réseau au
+serveur OpenHR, les JARs, la configuration (sans afficher aucun secret), la
+compilation et un appel de test, puis joint le log du connecteur.
+
 ## Dépannage
 
 | Symptôme | Cause probable | Correction |
